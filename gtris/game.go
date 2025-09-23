@@ -3,16 +3,18 @@ package gtris
 import (
 	"fmt"
 	"image/color"
+	"log"
 	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/text"
+	"github.com/hajimehoshi/ebiten/v2/vector"
 	"golang.org/x/image/font"
 )
 
 const (
 	ScreenWidth  = 240
-	ScreenHeight = 320
+	ScreenHeight = 360
 )
 
 type Size struct {
@@ -33,6 +35,7 @@ type Button struct {
 	Radius  float64 // Радиус
 	Color   color.RGBA
 	Pressed bool
+	PressedLong bool
 }
 
 // NewButton создает новую кнопку
@@ -56,35 +59,82 @@ func (b *Button) Contains(x, y int) bool {
 // Update обновляет состояние кнопок
 func (b *Button) Update(cursorX, cursorY int, isPressed bool) {
 	if b.Contains(cursorX, cursorY) && isPressed {
+		if b.Pressed {
+			b.PressedLong = true
+		}
 		b.Pressed = true
 	} else {
 		b.Pressed = false
+		b.PressedLong = false
 	}
 }
 
-// TODO: доработать с помощью vector
-// Draw рисует кнопку как закрашенный круг с помощью ebitenutil
+// Простой шейдер для рисования (требуется для vector.Path)
+var shader *ebiten.Shader
+
+func init() {
+	// Компилируем простой шейдер
+	var err error
+	shader, err = ebiten.NewShader([]byte(`
+		package main
+
+		func Fragment(position vec4, texCoord vec2, color vec4) vec4 {
+			return color
+		}
+	`))
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+// Draw рисует кнопку
 func (b *Button) Draw(screen *ebiten.Image) {
 	// Цвет кнопки (темнее при нажатии)
 	btnColor := b.Color
 	if b.Pressed {
 		btnColor = color.RGBA{
-			R: uint8(float64(b.Color.R) * 0.7),
-			G: uint8(float64(b.Color.G) * 0.7),
-			B: uint8(float64(b.Color.B) * 0.7),
+			R: uint8(float32(b.Color.R) * 0.7),
+			G: uint8(float32(b.Color.G) * 0.7),
+			B: uint8(float32(b.Color.B) * 0.7),
 			A: b.Color.A,
 		}
 	}
 
-	// Рисуем круг с помощью DrawRect (упрощенный способ)
-	// Для настоящего круга лучше использовать текстуру или шейдер
-	size := int(b.Radius * 2)
-	img := ebiten.NewImage(size, size)
-	img.Fill(btnColor)
+	// Рисуем заполненный круг (современный API)
+	path := vector.Path{}
+	path.Arc(float32(b.X), float32(b.Y), float32(b.Radius), 0, 2*math.Pi, vector.Clockwise)
+	vertices, indices := path.AppendVerticesAndIndicesForFilling(nil, nil)
 
-	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(b.X-b.Radius, b.Y-b.Radius)
-	screen.DrawImage(img, op)
+	// Применяем цвет ко всем вершинам
+	for i := range vertices {
+		vertices[i].ColorR = float32(btnColor.R) / 255
+		vertices[i].ColorG = float32(btnColor.G) / 255
+		vertices[i].ColorB = float32(btnColor.B) / 255
+		vertices[i].ColorA = float32(btnColor.A) / 255
+	}
+
+	screen.DrawTrianglesShader(vertices, indices, shader, &ebiten.DrawTrianglesShaderOptions{
+		Blend: ebiten.BlendCopy,
+	})
+
+	// Рисуем обводку
+	strokePath := vector.Path{}
+	strokePath.Arc(float32(b.X), float32(b.Y), float32(b.Radius), 0, 2*math.Pi, vector.Clockwise)
+	strokeOp := &vector.StrokeOptions{}
+	strokeOp.Width = 3
+	strokeVertices, strokeIndices := strokePath.AppendVerticesAndIndicesForStroke(nil, nil, strokeOp) // 3 - толщина линии
+
+	// Черный цвет для обводки
+	for i := range strokeVertices {
+		strokeVertices[i].ColorR = 0
+		strokeVertices[i].ColorG = 0
+		strokeVertices[i].ColorB = 0
+		strokeVertices[i].ColorA = 1
+	}
+
+	screen.DrawTrianglesShader(strokeVertices, strokeIndices, shader, &ebiten.DrawTrianglesShaderOptions{
+		Blend: ebiten.BlendSourceOver,
+	})
 }
 
 type Game struct {
@@ -170,7 +220,7 @@ func (g *Game) Update() error {
 			g.StartPlay()
 		}
 
-		if g.attractMode && tch == ebiten.KeyDown {
+		if g.attractMode && tch == ebiten.KeySpace {
 			g.StartPlay()
 		}
 	case GameStateGameOver:
@@ -183,7 +233,7 @@ func (g *Game) Update() error {
 		}
 
 		tch := g.processTouchReturnKey()
-		if tch == ebiten.KeyDown {
+		if tch == ebiten.KeySpace {
 			if g.attractMode {
 				g.Start()
 			} else {
@@ -238,19 +288,12 @@ func (g *Game) processInput(key ebiten.Key) {
 		}
 	}
 
-	if key == ebiten.KeyUp {
+	if key == ebiten.KeySpace {
 		newPiece := g.rotatePiece()
 		if g.pieceInsideGameZone(newPiece, *g.piecePosition) {
 			g.currentPiece = newPiece
 		}
 	}
-	//
-	//if key == ebiten.KeyUp {
-	//	newPiece := g.rotatePiece()
-	//	if g.pieceInsideGameZone(newPiece, *g.piecePosition) {
-	//		g.currentPiece = newPiece
-	//	}
-	//}
 }
 
 func (g *Game) processTouchReturnKey() ebiten.Key {
@@ -260,7 +303,7 @@ func (g *Game) processTouchReturnKey() ebiten.Key {
 	isMousePressed := ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft)
 
 	// Проверяем touch input (для мобильных устройств)
-	if touches := ebiten.TouchIDs(); len(touches) > 0 {
+	if touches := ebiten.AppendTouchIDs(nil); len(touches) > 0 {
 		// Берем первое касание
 		touchX, touchY := ebiten.TouchPosition(touches[0])
 		cursorX, cursorY = touchX, touchY
@@ -287,37 +330,47 @@ func (g *Game) processTouchReturnKey() ebiten.Key {
 			case 2:
 				println("Нажата маленькая кнопка", 3)
 				return ebiten.KeyRight
+			case 3:
+				println("Нажата маленькая кнопка", 4)
+				return ebiten.KeyDown
 
 			}
 		}
 	}
 	if g.largeButton.Pressed {
 		println("Нажата большая кнопка!")
-		return ebiten.KeyDown
+		if g.largeButton.PressedLong {
+			return 0
+		}
+		return ebiten.KeySpace
 	}
 	return 0
 }
 
 func (g *Game) drawText(screen *ebiten.Image, gameZonePos *Position) {
-	boardBlockWidth, _ := g.bgBlockImage.Size()
-	boardWidth := int(g.gameZoneSize.Width) * boardBlockWidth
-	text.Draw(screen, "SCORE", g.txtFont, boardWidth+gameZonePos.X*2, gameZonePos.Y*2, color.White)
+	boardBlock := g.bgBlockImage.Bounds().Size()
+	boardWidth := int(g.gameZoneSize.Width) * boardBlock.Y
+	text.Draw(screen, "Счёт", g.txtFont, boardWidth+gameZonePos.X*2, gameZonePos.Y*2, color.White)
 	text.Draw(screen, fmt.Sprintf("%08d", g.score), g.txtFont, boardWidth+gameZonePos.X*2, gameZonePos.Y*2+8, color.White)
 
 	if g.state == GameStateGameOver {
 		dy := 122
 		text.Draw(screen, "GAME OVER", g.txtFont, boardWidth+gameZonePos.X*2, gameZonePos.Y*2+dy, color.White)
-		text.Draw(screen, "space to start", g.txtFont, boardWidth+gameZonePos.X*2, gameZonePos.Y*2+dy+8, color.White)
+		text.Draw(screen, "Нажмите", g.txtFont, boardWidth+gameZonePos.X*2, gameZonePos.Y*2+dy+10, color.White)
+		text.Draw(screen, "большую", g.txtFont, boardWidth+gameZonePos.X*2, gameZonePos.Y*2+dy+20, color.White)
+		text.Draw(screen, "кнопку", g.txtFont, boardWidth+gameZonePos.X*2, gameZonePos.Y*2+dy+30, color.White)
 	}
 
 	if g.attractMode {
 		dy := 148
-		text.Draw(screen, "press space", g.txtFont, boardWidth+gameZonePos.X*2, gameZonePos.Y*2+dy, color.White)
-		text.Draw(screen, "  to play", g.txtFont, boardWidth+gameZonePos.X*2, gameZonePos.Y*2+dy+8, color.White)
+		text.Draw(screen, "Нажмите", g.txtFont, boardWidth+gameZonePos.X*2, gameZonePos.Y*2+dy, color.White)
+		text.Draw(screen, "большую", g.txtFont, boardWidth+gameZonePos.X*2, gameZonePos.Y*2+dy+10, color.White)
+		text.Draw(screen, "кнопку...", g.txtFont, boardWidth+gameZonePos.X*2, gameZonePos.Y*2+dy+20, color.White)
 	}
 
 	dy := 48
-	text.Draw(screen, "NEXT", g.txtFont, boardWidth+gameZonePos.X*2, gameZonePos.Y*2+dy, color.White)
+	text.Draw(screen, "Следующая", g.txtFont, boardWidth+gameZonePos.X*2, gameZonePos.Y*2+dy, color.White)
+	text.Draw(screen, "фигура", g.txtFont, boardWidth+gameZonePos.X*2, gameZonePos.Y*2+dy+10, color.White)
 }
 
 func (g *Game) updateScore(lines int) {
@@ -344,10 +397,10 @@ func (g *Game) Draw(screen *ebiten.Image) {
 				cellImage = g.bgBlockImage
 			}
 
-			w, h := cellImage.Size()
+			s := cellImage.Bounds().Size()
 			screenPos := &Position{
-				X: gameZonePos.X + x*w,
-				Y: gameZonePos.Y + y*h,
+				X: gameZonePos.X + x*s.X,
+				Y: gameZonePos.Y + y*s.Y,
 			}
 			op := &ebiten.DrawImageOptions{}
 			op.GeoM.Translate(float64(screenPos.X), float64(screenPos.Y))
@@ -360,7 +413,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 
 	if g.nextPiece != nil {
-		nextPos := &Position{X: int(math.Round(ScreenWidth * 0.5)), Y: int(math.Round(ScreenHeight * .37))}
+		nextPos := &Position{X: int(math.Round(ScreenWidth * 0.7)), Y: int(math.Round(ScreenHeight * .3))}
 		g.nextPiece.Draw(screen, nextPos, &Position{})
 	}
 
@@ -387,17 +440,20 @@ func (g *Game) SetupButtons() {
 	margin := float64(ScreenWidth * 0.04) // Отступ от краев экрана
 
 	// Вычисляем позиции для треугольника (вершиной вниз)
-	baseY := float64(g.screenHeight) - margin - smallRadius
+	baseY := float64(g.screenHeight) - margin*2 - smallRadius*2
 	leftX := margin + smallRadius
-	rightX := leftX + smallRadius*2
-	topX := leftX + smallRadius
+	rightX := margin*2 + leftX + smallRadius*2
+	topX := leftX + smallRadius*1.5
 	topY := baseY - smallRadius*1.5
+	bottomX := topX
+	bottomY := baseY + smallRadius*1.5
 
 	// Создаем маленькие кнопки
 	g.smallButtons = []*Button{
-		NewButton(leftX, baseY, smallRadius, yellow),  // Левая нижняя
-		NewButton(topX, topY, smallRadius, yellow),    // Верхняя вершина
-		NewButton(rightX, baseY, smallRadius, yellow), // Правая нижняя
+		NewButton(leftX, baseY, smallRadius, yellow),     // Левая нижняя
+		NewButton(topX, topY, smallRadius, yellow),       // Верхняя вершина
+		NewButton(rightX, baseY, smallRadius, yellow),    // Правая нижняя
+		NewButton(bottomX, bottomY, smallRadius, yellow), // Нижняя вершина
 	}
 
 	// Создаем большую кнопку справа
@@ -409,7 +465,7 @@ func (g *Game) SetupButtons() {
 }
 
 func NewGame() *Game {
-	ebiten.SetMaxTPS(18)
+	ebiten.SetTPS(18)
 
 	game := &Game{
 		txtFont:          NewFont(),
@@ -417,7 +473,7 @@ func NewGame() *Game {
 		inputKeyboard:    &KeyboardInput{},
 		dropTicks:        4,
 		pieces:           allPieces,
-		gameZoneSize:     Size{Width: 10, Height: 24},
+		gameZoneSize:     Size{Width: 14, Height: 24},
 		bgBlockImage:     createImage(imgBlockBG),
 	}
 
