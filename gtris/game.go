@@ -12,7 +12,7 @@ import (
 
 const (
 	ScreenWidth  = 240
-	ScreenHeight = 240
+	ScreenHeight = 320
 )
 
 type Size struct {
@@ -26,6 +26,66 @@ const (
 	GameStateGameOver GameState = iota
 	GameStatePlaying
 )
+
+// Button представляет круглую кнопку
+type Button struct {
+	X, Y    float64 // Центр кнопки
+	Radius  float64 // Радиус
+	Color   color.RGBA
+	Pressed bool
+}
+
+// NewButton создает новую кнопку
+func NewButton(x, y, radius float64, color color.RGBA) *Button {
+	return &Button{
+		X:      x,
+		Y:      y,
+		Radius: radius,
+		Color:  color,
+	}
+}
+
+// Contains проверяет, находится ли точка внутри кнопки
+func (b *Button) Contains(x, y int) bool {
+	dx := float64(x) - b.X
+	dy := float64(y) - b.Y
+	distance := math.Sqrt(dx*dx + dy*dy)
+	return distance <= b.Radius
+}
+
+// Update обновляет состояние кнопок
+func (b *Button) Update(cursorX, cursorY int, isPressed bool) {
+	if b.Contains(cursorX, cursorY) && isPressed {
+		b.Pressed = true
+	} else {
+		b.Pressed = false
+	}
+}
+
+// TODO: доработать с помощью vector
+// Draw рисует кнопку как закрашенный круг с помощью ebitenutil
+func (b *Button) Draw(screen *ebiten.Image) {
+	// Цвет кнопки (темнее при нажатии)
+	btnColor := b.Color
+	if b.Pressed {
+		btnColor = color.RGBA{
+			R: uint8(float64(b.Color.R) * 0.7),
+			G: uint8(float64(b.Color.G) * 0.7),
+			B: uint8(float64(b.Color.B) * 0.7),
+			A: b.Color.A,
+		}
+	}
+
+	// Рисуем круг с помощью DrawRect (упрощенный способ)
+	// Для настоящего круга лучше использовать текстуру или шейдер
+	size := int(b.Radius * 2)
+	img := ebiten.NewImage(size, size)
+	img.Fill(btnColor)
+
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(b.X-b.Radius, b.Y-b.Radius)
+	screen.DrawImage(img, op)
+}
 
 type Game struct {
 	dropTicks   uint
@@ -49,6 +109,20 @@ type Game struct {
 	input            Input
 	inputAttractMode Input
 	inputKeyboard    Input
+
+	smallButtons []*Button
+	largeButton  *Button
+
+	screenWidth  int
+	screenHeight int
+}
+
+func (g *Game) SetScreenWidth(screenWidth int) {
+	g.screenWidth = screenWidth
+}
+
+func (g *Game) SetScreenHeight(screenHeight int) {
+	g.screenHeight = screenHeight
 }
 
 func (g *Game) Start() {
@@ -87,12 +161,29 @@ func (g *Game) Update() error {
 		if key != nil {
 			g.processInput(*key)
 		}
+		tch := g.processTouchReturnKey()
+		if tch != 0 {
+			g.processInput(tch)
+		}
 
 		if g.attractMode && g.inputKeyboard.IsSpacePressed() {
 			g.StartPlay()
 		}
+
+		if g.attractMode && tch == ebiten.KeyDown {
+			g.StartPlay()
+		}
 	case GameStateGameOver:
 		if g.input.IsSpacePressed() {
+			if g.attractMode {
+				g.Start()
+			} else {
+				g.StartPlay()
+			}
+		}
+
+		tch := g.processTouchReturnKey()
+		if tch == ebiten.KeyDown {
 			if g.attractMode {
 				g.Start()
 			} else {
@@ -153,6 +244,58 @@ func (g *Game) processInput(key ebiten.Key) {
 			g.currentPiece = newPiece
 		}
 	}
+	//
+	//if key == ebiten.KeyUp {
+	//	newPiece := g.rotatePiece()
+	//	if g.pieceInsideGameZone(newPiece, *g.piecePosition) {
+	//		g.currentPiece = newPiece
+	//	}
+	//}
+}
+
+func (g *Game) processTouchReturnKey() ebiten.Key {
+
+	// Получаем позицию курсора и состояние мыши
+	cursorX, cursorY := ebiten.CursorPosition()
+	isMousePressed := ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft)
+
+	// Проверяем touch input (для мобильных устройств)
+	if touches := ebiten.TouchIDs(); len(touches) > 0 {
+		// Берем первое касание
+		touchX, touchY := ebiten.TouchPosition(touches[0])
+		cursorX, cursorY = touchX, touchY
+		isMousePressed = true
+	}
+	// Обновляем состояние маленьких кнопок
+	for _, btn := range g.smallButtons {
+		btn.Update(cursorX, cursorY, isMousePressed)
+	}
+
+	// Обновляем состояние большой кнопки
+	g.largeButton.Update(cursorX, cursorY, isMousePressed)
+
+	// В методе Update после обновления кнопок:
+	for i, btn := range g.smallButtons {
+		if btn.Pressed {
+			switch i {
+			case 0:
+				println("Нажата маленькая кнопка", 1)
+				return ebiten.KeyLeft
+			case 1:
+				println("Нажата маленькая кнопка", 2)
+				return ebiten.KeyUp
+			case 2:
+				println("Нажата маленькая кнопка", 3)
+				return ebiten.KeyRight
+
+			}
+		}
+	}
+	if g.largeButton.Pressed {
+		println("Нажата большая кнопка!")
+		return ebiten.KeyDown
+	}
+	return 0
 }
 
 func (g *Game) drawText(screen *ebiten.Image, gameZonePos *Position) {
@@ -220,10 +363,49 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		nextPos := &Position{X: int(math.Round(ScreenWidth * 0.5)), Y: int(math.Round(ScreenHeight * .37))}
 		g.nextPiece.Draw(screen, nextPos, &Position{})
 	}
+
+	// Рисуем маленькие кнопки (треугольник вершиной вниз)
+	for _, btn := range g.smallButtons {
+		btn.Draw(screen)
+	}
+
+	// Рисуем большую кнопку
+	g.largeButton.Draw(screen)
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 	return ScreenWidth, ScreenHeight
+}
+
+// SetupButtons создает и размещает кнопки согласно требованиям
+func (g *Game) SetupButtons() {
+	// Желтый цвет для кнопок
+	yellow := color.RGBA{255, 255, 0, 255}
+
+	// Параметры для маленьких кнопок
+	smallRadius := float64(ScreenWidth * 0.08)
+	margin := float64(ScreenWidth * 0.04) // Отступ от краев экрана
+
+	// Вычисляем позиции для треугольника (вершиной вниз)
+	baseY := float64(g.screenHeight) - margin - smallRadius
+	leftX := margin + smallRadius
+	rightX := leftX + smallRadius*2
+	topX := leftX + smallRadius
+	topY := baseY - smallRadius*1.5
+
+	// Создаем маленькие кнопки
+	g.smallButtons = []*Button{
+		NewButton(leftX, baseY, smallRadius, yellow),  // Левая нижняя
+		NewButton(topX, topY, smallRadius, yellow),    // Верхняя вершина
+		NewButton(rightX, baseY, smallRadius, yellow), // Правая нижняя
+	}
+
+	// Создаем большую кнопку справа
+	largeRadius := smallRadius * 1.5
+	largeX := float64(g.screenWidth) - margin - largeRadius
+	largeY := float64(g.screenHeight) - margin - largeRadius
+
+	g.largeButton = NewButton(largeX, largeY, largeRadius, yellow)
 }
 
 func NewGame() *Game {
