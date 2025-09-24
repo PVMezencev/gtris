@@ -1,21 +1,173 @@
 <!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>GTris - WebAssembly</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #1a1a1a;
+            color: white;
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        /* Стили прелоадера */
+        #preloader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #1a1a1a;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            transition: opacity 0.5s ease;
+        }
+
+        #preloader.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .loader {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #333;
+            border-top: 5px solid #4CAF50;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        .loader-text {
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+
+        .loader-progress {
+            width: 200px;
+            height: 4px;
+            background: #333;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .loader-progress-bar {
+            height: 100%;
+            background: #4CAF50;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+<body>
+<!-- Прелоадер -->
+<div id="preloader">
+    <div class="loader"></div>
+    <div class="loader-text">Загрузка GTris...</div>
+    <div class="loader-progress">
+        <div class="loader-progress-bar" id="progressBar"></div>
+    </div>
+    <div id="status">Инициализация</div>
+</div>
 <script src="wasm_exec.js"></script>
 <script>
-// Polyfill
-if (!WebAssembly.instantiateStreaming) {
-    WebAssembly.instantiateStreaming = async (resp, importObject) => {
-        const source = await (await resp).arrayBuffer();
-        return await WebAssembly.instantiate(source, importObject);
-    };
-}
+    // Элементы DOM
+    const preloader = document.getElementById('preloader');
+    const progressBar = document.getElementById('progressBar');
+    const statusText = document.getElementById('status');
 
-const go = new Go();
-WebAssembly.instantiateStreaming(fetch("gtris.wasm"), go.importObject).then(result => {
-    go.run(result.instance);
-    console.log("WASM loaded successfully");
-});
-if (window.getScore && typeof window.getScore === 'function') {
-    const score = window.getScore();
-    window.alert(score)
-}
+    // Функция обновления прогресса
+    function updateProgress(percent, status) {
+        progressBar.style.width = percent + '%';
+        if (status) {
+            statusText.textContent = status;
+        }
+    }
+
+    // Функция скрытия прелоадера
+    function hidePreloader() {
+        preloader.classList.add('hidden');
+    }
+
+    // Функция показа ошибки
+    function showError(message) {
+        statusText.textContent = 'Error: ' + message;
+        statusText.style.color = '#ff4444';
+        preloader.classList.add('hidden');
+    }
+
+
+
+    async function loadWasm() {
+        try {
+            updateProgress(10, 'Загрузка среды выполнения WebAssembly...');
+
+            // Polyfill
+            if (!WebAssembly.instantiateStreaming) {
+                updateProgress(20, 'Использование polyfill...');
+                WebAssembly.instantiateStreaming = async (resp, importObject) => {
+                    const source = await (await resp).arrayBuffer();
+                    return await WebAssembly.instantiate(source, importObject);
+                };
+            }
+
+            updateProgress(30, 'Выборка модуля WASM...');
+
+            const go = new Go();
+            const wasmPromise = WebAssembly.instantiateStreaming(
+                fetch("gtris.wasm"),
+                go.importObject
+            );
+
+            updateProgress(60, 'Сборка...');
+
+            const result = await wasmPromise;
+
+            updateProgress(80, 'Запуск игрового пространства...');
+
+            // Даем время для отображения прогресса
+            setTimeout(() => {
+                go.run(result.instance);
+                updateProgress(100, 'Успешно!');
+
+                // Ждем немного перед скрытием прелоадера
+                setTimeout(hidePreloader, 1000);
+
+            }, 500);
+
+        } catch (error) {
+            console.error("Error loading WASM:", error);
+            showError(error.toString());
+        }
+    }
+
+
+    // Запускаем загрузку когда страница полностью загружена
+    window.addEventListener('load', () => {
+        setTimeout(loadWasm, 500); // Небольшая задержка для показа прелоадера
+    });
+    if (window.getScore && typeof window.getScore === 'function') {
+        const score = window.getScore();
+        window.alert(score)
+    }
 </script>
+</body>

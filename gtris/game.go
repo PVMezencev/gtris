@@ -124,6 +124,8 @@ func (b *Button) Draw(screen *ebiten.Image) {
 	// Центрируем: перемещаем так, чтобы центр изображения был в позиции кнопки
 	// После масштабирования размер становится Radius * 2
 	op.GeoM.Translate(b.X-b.Radius, b.Y-b.Radius)
+	op.DisableMipmaps = true
+	op.Filter = ebiten.FilterNearest
 
 	screen.DrawImage(img, op)
 }
@@ -318,15 +320,31 @@ func (g *Game) processTouchReturnKey() ebiten.Key {
 			switch i {
 			case 0:
 				println("Нажата маленькая кнопка", 1)
+				if g.largeButton.PressedLong {
+					g.largeButton.PressedLong = false
+					return 0
+				}
 				return ebiten.KeyLeft
 			case 1:
 				println("Нажата маленькая кнопка", 2)
+				if g.largeButton.PressedLong {
+					g.largeButton.PressedLong = false
+					return 0
+				}
 				return ebiten.KeyUp
 			case 2:
 				println("Нажата маленькая кнопка", 3)
+				if g.largeButton.PressedLong {
+					g.largeButton.PressedLong = false
+					return 0
+				}
 				return ebiten.KeyRight
 			case 3:
 				println("Нажата маленькая кнопка", 4)
+				if g.largeButton.PressedLong {
+					g.largeButton.PressedLong = false
+					return 0
+				}
 				return ebiten.KeyDown
 
 			}
@@ -335,6 +353,7 @@ func (g *Game) processTouchReturnKey() ebiten.Key {
 	if g.largeButton.Pressed {
 		println("Нажата большая кнопка!")
 		if g.largeButton.PressedLong {
+			g.largeButton.PressedLong = false
 			return 0
 		}
 		return ebiten.KeySpace
