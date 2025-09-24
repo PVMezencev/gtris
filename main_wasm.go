@@ -15,7 +15,6 @@ func main() {
 	game := gtris.NewGame()
 	game.SetScreenWidth(gtris.ScreenWidth)
 	game.SetScreenHeight(gtris.ScreenHeight)
-	game.SetupButtons()
 
 	js.Global().Set("getScore", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		// Предполагается, что у game есть метод для получения счета

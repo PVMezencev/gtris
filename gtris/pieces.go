@@ -36,11 +36,11 @@ var allPieces = []*Piece{
 	}, imgBlockA, FTypeA),
 	NewPiece([][]int{
 		{1, 0, 0, 0},
-		{1, 1, 1, 1},
+		{1, 1, 1, 0},
 	}, imgBlockB, FTypeB),
 	NewPiece([][]int{
 		{0, 0, 0, 1},
-		{1, 1, 1, 1},
+		{0, 1, 1, 1},
 	}, imgBlockC, FTypeC),
 	NewPiece([][]int{
 		{1, 1, 0, 0},

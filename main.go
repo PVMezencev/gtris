@@ -14,7 +14,6 @@ func main() {
 	game := gtris.NewGame()
 	game.SetScreenWidth(gtris.ScreenWidth)
 	game.SetScreenHeight(gtris.ScreenHeight)
-	game.SetupButtons()
 
 	ebiten.SetWindowSize(gtris.ScreenWidth, gtris.ScreenHeight)
 	ebiten.SetWindowTitle("gtris")
