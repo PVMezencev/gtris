@@ -12,5 +12,10 @@ if (!WebAssembly.instantiateStreaming) {
 const go = new Go();
 WebAssembly.instantiateStreaming(fetch("gtris.wasm"), go.importObject).then(result => {
     go.run(result.instance);
+    console.log("WASM loaded successfully");
 });
+if (window.getScore && typeof window.getScore === 'function') {
+    const score = window.getScore();
+    window.alert(score)
+}
 </script>

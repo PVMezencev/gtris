@@ -166,6 +166,10 @@ func (g *Game) SetScreenHeight(screenHeight int) {
 	g.screenHeight = screenHeight
 }
 
+func (g *Game) Score() int {
+	return g.score
+}
+
 func (g *Game) Start() {
 	g.state = GameStatePlaying
 	g.score = 0

@@ -8,7 +8,7 @@ build:
 build_web: clean_web
 	mkdir -p ${WEB_DST_PATH}
 
-	GOOS=js GOARCH=wasm go build -o ${WEB_DST_PATH}/${WEB_BINARY_NAME}.wasm main.go
+	GOOS=js GOARCH=wasm go build -o ${WEB_DST_PATH}/${WEB_BINARY_NAME}.wasm main_wasm.go
 	cp $(shell go env GOROOT)/lib/wasm/wasm_exec.js ${WEB_DST_PATH}
 	cp web/index.html ${WEB_DST_PATH}
 
