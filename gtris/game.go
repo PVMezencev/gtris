@@ -1,14 +1,16 @@
 package gtris
 
 import (
+	"bytes"
 	"fmt"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"image/color"
-	"log"
 	"math"
+
+	_ "embed"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/text"
-	"github.com/hajimehoshi/ebiten/v2/vector"
 	"golang.org/x/image/font"
 )
 
@@ -29,22 +31,55 @@ const (
 	GameStatePlaying
 )
 
+//go:embed images/button_normal.png
+var btnNormal []byte
+
+//go:embed images/button_pressed.png
+var btnPressed []byte
+
+// Загрузка PNG изображений
+func loadButtonImages() (*ebiten.Image, *ebiten.Image, error) {
+	// Загружаем PNG файлы (создайте их заранее)
+	buffNormal := bytes.NewBuffer(btnNormal)
+	normalImg, _, err := ebitenutil.NewImageFromReader(buffNormal)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	buffPressed := bytes.NewBuffer(btnPressed)
+	pressedImg, _, err := ebitenutil.NewImageFromReader(buffPressed)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return normalImg, pressedImg, nil
+}
+
 // Button представляет круглую кнопку
 type Button struct {
-	X, Y    float64 // Центр кнопки
-	Radius  float64 // Радиус
-	Color   color.RGBA
-	Pressed bool
-	PressedLong bool
+	X, Y         float64 // Центр кнопки
+	Radius       float64 // Радиус
+	Color        color.RGBA
+	Pressed      bool
+	PressedLong  bool
+	normalImg    *ebiten.Image // Изображение нормальной кнопки
+	pressedImg   *ebiten.Image // Изображение нажатой кнопки
+	originalSize int           // Размер исходного изображения
 }
 
 // NewButton создает новую кнопку
 func NewButton(x, y, radius float64, color color.RGBA) *Button {
+	normalImg, pressedImg, _ := loadButtonImages()
+	// Предполагаем, что изображения квадратные и центрированы
+	originalSize := normalImg.Bounds().Dx()
 	return &Button{
-		X:      x,
-		Y:      y,
-		Radius: radius,
-		Color:  color,
+		X:            x,
+		Y:            y,
+		Radius:       radius,
+		Color:        color,
+		pressedImg:   pressedImg,
+		normalImg:    normalImg,
+		originalSize: originalSize,
 	}
 }
 
@@ -69,72 +104,28 @@ func (b *Button) Update(cursorX, cursorY int, isPressed bool) {
 	}
 }
 
-// Простой шейдер для рисования (требуется для vector.Path)
-var shader *ebiten.Shader
-
-func init() {
-	// Компилируем простой шейдер
-	var err error
-	shader, err = ebiten.NewShader([]byte(`
-		package main
-
-		func Fragment(position vec4, texCoord vec2, color vec4) vec4 {
-			return color
-		}
-	`))
-	if err != nil {
-		log.Fatal(err)
-	}
-}
-
 // Draw рисует кнопку
 func (b *Button) Draw(screen *ebiten.Image) {
-	// Цвет кнопки (темнее при нажатии)
-	btnColor := b.Color
+	var img *ebiten.Image
 	if b.Pressed {
-		btnColor = color.RGBA{
-			R: uint8(float32(b.Color.R) * 0.7),
-			G: uint8(float32(b.Color.G) * 0.7),
-			B: uint8(float32(b.Color.B) * 0.7),
-			A: b.Color.A,
-		}
+		img = b.pressedImg
+	} else {
+		img = b.normalImg
 	}
 
-	// Рисуем заполненный круг (современный API)
-	path := vector.Path{}
-	path.Arc(float32(b.X), float32(b.Y), float32(b.Radius), 0, 2*math.Pi, vector.Clockwise)
-	vertices, indices := path.AppendVerticesAndIndicesForFilling(nil, nil)
+	op := &ebiten.DrawImageOptions{}
 
-	// Применяем цвет ко всем вершинам
-	for i := range vertices {
-		vertices[i].ColorR = float32(btnColor.R) / 255
-		vertices[i].ColorG = float32(btnColor.G) / 255
-		vertices[i].ColorB = float32(btnColor.B) / 255
-		vertices[i].ColorA = float32(btnColor.A) / 255
-	}
+	// Вычисляем масштаб: целевой диаметр / исходный размер
+	scale := (b.Radius * 2) / float64(b.originalSize)
 
-	screen.DrawTrianglesShader(vertices, indices, shader, &ebiten.DrawTrianglesShaderOptions{
-		Blend: ebiten.BlendCopy,
-	})
+	// Устанавливаем масштаб
+	op.GeoM.Scale(scale, scale)
 
-	// Рисуем обводку
-	strokePath := vector.Path{}
-	strokePath.Arc(float32(b.X), float32(b.Y), float32(b.Radius), 0, 2*math.Pi, vector.Clockwise)
-	strokeOp := &vector.StrokeOptions{}
-	strokeOp.Width = 3
-	strokeVertices, strokeIndices := strokePath.AppendVerticesAndIndicesForStroke(nil, nil, strokeOp) // 3 - толщина линии
+	// Центрируем: перемещаем так, чтобы центр изображения был в позиции кнопки
+	// После масштабирования размер становится Radius * 2
+	op.GeoM.Translate(b.X-b.Radius, b.Y-b.Radius)
 
-	// Черный цвет для обводки
-	for i := range strokeVertices {
-		strokeVertices[i].ColorR = 0
-		strokeVertices[i].ColorG = 0
-		strokeVertices[i].ColorB = 0
-		strokeVertices[i].ColorA = 1
-	}
-
-	screen.DrawTrianglesShader(strokeVertices, strokeIndices, shader, &ebiten.DrawTrianglesShaderOptions{
-		Blend: ebiten.BlendSourceOver,
-	})
+	screen.DrawImage(img, op)
 }
 
 type Game struct {
@@ -473,7 +464,7 @@ func NewGame() *Game {
 		inputKeyboard:    &KeyboardInput{},
 		dropTicks:        4,
 		pieces:           allPieces,
-		gameZoneSize:     Size{Width: 14, Height: 24},
+		gameZoneSize:     Size{Width: 16, Height: 28},
 		bgBlockImage:     createImage(imgBlockBG),
 	}
 
