@@ -33,29 +33,29 @@ var allPieces = []*Piece{
 	NewPiece([][]int{
 		{1, 1, 1, 1},
 		{0, 0, 0, 0},
-	}, imgBlockA),
+	}, imgBlockA, FTypeA),
 	NewPiece([][]int{
 		{1, 0, 0, 0},
 		{1, 1, 1, 1},
-	}, imgBlockB),
+	}, imgBlockB, FTypeB),
 	NewPiece([][]int{
 		{0, 0, 0, 1},
 		{1, 1, 1, 1},
-	}, imgBlockC),
+	}, imgBlockC, FTypeC),
 	NewPiece([][]int{
 		{1, 1, 0, 0},
 		{1, 1, 0, 0},
-	}, imgBlockD),
+	}, imgBlockD, FTypeD),
 	NewPiece([][]int{
 		{0, 1, 1, 0},
 		{1, 1, 0, 0},
-	}, imgBlockE),
+	}, imgBlockE, FTypeE),
 	NewPiece([][]int{
 		{0, 1, 0, 0},
 		{1, 1, 1, 0},
-	}, imgBlockF),
+	}, imgBlockF, FTypeF),
 	NewPiece([][]int{
 		{1, 1, 0, 0},
 		{0, 1, 1, 0},
-	}, imgBlockG),
+	}, imgBlockG, FTypeG),
 }

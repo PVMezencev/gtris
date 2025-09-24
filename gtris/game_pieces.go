@@ -99,17 +99,6 @@ func (g *Game) checkForLines() int {
 
 func (g *Game) rotatePiece() *Piece {
 	newPiece := *g.currentPiece
-
-	newPiece.Blocks = make([][]int, len(g.currentPiece.Blocks[0]))
-	for y := range newPiece.Blocks {
-		newPiece.Blocks[y] = make([]int, len(g.currentPiece.Blocks))
-	}
-
-	for y, row := range g.currentPiece.Blocks {
-		for x := range row {
-			newPiece.Blocks[x][len(g.currentPiece.Blocks)-1-y] = g.currentPiece.Blocks[y][x]
-		}
-	}
-
+	newPiece.Rotate()
 	return &newPiece
 }
