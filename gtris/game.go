@@ -1,17 +1,14 @@
 package gtris
 
 import (
-	"bytes"
 	"fmt"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"image/color"
 	"math"
 	"time"
 
-	_ "embed"
-
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/text"
+	"github.com/hajimehoshi/ebiten/v2/vector"
 	"golang.org/x/image/font"
 )
 
@@ -33,30 +30,6 @@ const (
 	GameStatePlaying
 )
 
-//go:embed images/button_normal.png
-var btnNormal []byte
-
-//go:embed images/button_pressed.png
-var btnPressed []byte
-
-// Загрузка PNG изображений
-func loadButtonImages() (*ebiten.Image, *ebiten.Image, error) {
-	// Загружаем PNG файлы (создайте их заранее)
-	buffNormal := bytes.NewBuffer(btnNormal)
-	normalImg, _, err := ebitenutil.NewImageFromReader(buffNormal)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	buffPressed := bytes.NewBuffer(btnPressed)
-	pressedImg, _, err := ebitenutil.NewImageFromReader(buffPressed)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return normalImg, pressedImg, nil
-}
-
 // Button представляет круглую кнопку
 type Button struct {
 	X, Y            float64 // Центр кнопки
@@ -64,25 +37,17 @@ type Button struct {
 	Color           color.RGBA
 	Pressed         bool
 	LastPressedTime int64
-	normalImg       *ebiten.Image // Изображение нормальной кнопки
-	pressedImg      *ebiten.Image // Изображение нажатой кнопки
-	originalSize    int           // Размер исходного изображения
 	key             ebiten.Key
 }
 
 // NewButton создает новую кнопку
 func NewButton(x, y, radius float64, color color.RGBA, k ebiten.Key) *Button {
-	normalImg, pressedImg, _ := loadButtonImages()
 	// Предполагаем, что изображения квадратные и центрированы
-	originalSize := normalImg.Bounds().Dx()
 	return &Button{
 		X:               x,
 		Y:               y,
 		Radius:          radius,
 		Color:           color,
-		pressedImg:      pressedImg,
-		normalImg:       normalImg,
-		originalSize:    originalSize,
 		key:             k,
 		Pressed:         false,
 		LastPressedTime: time.Now().UnixMilli(),
@@ -115,28 +80,11 @@ func (b *Button) PressedAgo() int64 {
 
 // Draw рисует кнопку
 func (b *Button) Draw(screen *ebiten.Image) {
-	var img *ebiten.Image
+	clr := b.Color
 	if b.Pressed {
-		img = b.pressedImg
-	} else {
-		img = b.normalImg
+		clr = color.RGBA{130, 125, 0, 255}
 	}
-
-	op := &ebiten.DrawImageOptions{}
-
-	// Вычисляем масштаб: целевой диаметр / исходный размер
-	scale := (b.Radius * 2) / float64(b.originalSize)
-
-	// Устанавливаем масштаб
-	op.GeoM.Scale(scale, scale)
-
-	// Центрируем: перемещаем так, чтобы центр изображения был в позиции кнопки
-	// После масштабирования размер становится Radius * 2
-	op.GeoM.Translate(b.X-b.Radius, b.Y-b.Radius)
-	op.DisableMipmaps = true
-	op.Filter = ebiten.FilterNearest
-
-	screen.DrawImage(img, op)
+	vector.DrawFilledCircle(screen, float32(b.X), float32(b.Y), float32(b.Radius), clr, true)
 }
 
 type Game struct {
@@ -338,10 +286,10 @@ func (g *Game) updateScore(lines int) {
 		}
 	}
 
-	g.level = g.score / 100
+	g.level = g.score / 500
 	g.dropTicks = DefaultDropTicks - uint(g.level)
-	if g.dropTicks <= 1 {
-		g.dropTicks = 1
+	if g.dropTicks <= 2 {
+		g.dropTicks = 2
 	}
 }
 

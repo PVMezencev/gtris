@@ -90,22 +90,19 @@ func (t *TouchInput) SetupButtons(screenWidth, screenHeight int) {
 	yellow := color.RGBA{255, 255, 0, 255}
 
 	// Параметры для маленьких кнопок
-	smallRadius := float64(ScreenWidth * 0.08)
+	smallRadius := float64(ScreenWidth * 0.1)
 	margin := float64(ScreenWidth * 0.04) // Отступ от краев экрана
 
 	// Вычисляем позиции для треугольника (вершиной вниз)
-	baseY := float64(screenHeight) - margin*2 - smallRadius*2
+	baseY := float64(screenHeight) - margin*4 - smallRadius*2
 	leftX := margin + smallRadius
-	rightX := margin*2 + leftX + smallRadius*2
-	topX := leftX + smallRadius*1.5
-	topY := baseY - smallRadius*1.5
-	bottomX := topX
-	bottomY := baseY + smallRadius*1.5
+	rightX := margin*4 + leftX + smallRadius*2
+	bottomX := leftX + smallRadius*1.8
+	bottomY := baseY + smallRadius*2.5
 
 	// Создаем маленькие кнопки
 	t.smallButtons = []*Button{
 		NewButton(leftX, baseY, smallRadius, yellow, ebiten.KeyLeft),     // Левая нижняя
-		NewButton(topX, topY, smallRadius, yellow, ebiten.KeyUp),         // Верхняя вершина
 		NewButton(rightX, baseY, smallRadius, yellow, ebiten.KeyRight),   // Правая нижняя
 		NewButton(bottomX, bottomY, smallRadius, yellow, ebiten.KeyDown), // Нижняя вершина
 	}
